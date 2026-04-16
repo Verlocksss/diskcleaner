@@ -1,31 +1,31 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export interface ScanCategory {
-  id: string;
+interface TreeNode {
   name: string;
-  description: string;
-  paths: string[];
+  path: string;
+  is_dir: boolean;
   size: number;
-  file_count: number;
+  has_children: boolean;
 }
 
-export interface ScanResult {
-  categories: ScanCategory[];
-  total_size: number;
-}
+const btnSelectFolder = document.getElementById('btn-select-folder') as HTMLButtonElement;
+const treeContainer = document.getElementById('tree-container') as HTMLDivElement;
 
-const btnScan = document.getElementById('btn-scan') as HTMLButtonElement;
-const btnClean = document.getElementById('btn-clean') as HTMLButtonElement;
-const statusIcon = document.getElementById('status-icon') as HTMLDivElement;
-const statusMessage = document.getElementById('status-message') as HTMLParagraphElement;
-const sizeDisplay = document.getElementById('size-display') as HTMLParagraphElement;
-const categoryList = document.getElementById('category-list') as HTMLDivElement;
+const placeholder = document.getElementById('inspector-placeholder') as HTMLDivElement;
+const details = document.getElementById('inspector-details') as HTMLDivElement;
 
-let currentScanResult: ScanResult | null = null;
-let selectedPaths = new Set<string>();
+const inspectName = document.getElementById('inspect-name') as HTMLHeadingElement;
+const inspectPath = document.getElementById('inspect-path') as HTMLParagraphElement;
+const inspectSize = document.getElementById('inspect-size') as HTMLDivElement;
+const inspectType = document.getElementById('inspect-type') as HTMLDivElement;
+const btnDelete = document.getElementById('btn-delete') as HTMLButtonElement;
+const btnEmpty = document.getElementById('btn-empty') as HTMLButtonElement;
+
+let currentSelectedPath: string | null = null;
+let currentlySelectedRow: HTMLElement | null = null;
 
 function formatBytes(bytes: number, decimals = 2) {
-  if (!+bytes) return '0 Bytes';
+  if (!+bytes) return '0 B';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -33,137 +33,159 @@ function formatBytes(bytes: number, decimals = 2) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-function updateCleanButtonState() {
-  if (selectedPaths.size > 0) {
-    btnClean.disabled = false;
-    btnClean.textContent = `Clean Selected (${selectedPaths.size} locations)`;
-  } else {
-    btnClean.disabled = true;
-    btnClean.textContent = 'Clean Selected (0)';
-  }
-}
-
-function renderCategories(result: ScanResult) {
-  categoryList.innerHTML = '';
-  categoryList.classList.remove('hidden');
-  selectedPaths.clear();
-
-  result.categories.forEach(cat => {
-    // If it has sizes, auto-select it by default to make it easy for users.
-    const hasJunk = cat.size > 0;
-    
-    if (hasJunk) {
-      cat.paths.forEach(p => selectedPaths.add(p));
+function selectNode(nodeData: TreeNode, rowEl: HTMLElement) {
+    if (currentlySelectedRow) {
+        currentlySelectedRow.classList.remove('selected');
     }
+    currentlySelectedRow = rowEl;
+    currentlySelectedRow.classList.add('selected');
+    currentSelectedPath = nodeData.path;
 
-    const item = document.createElement('div');
-    item.className = `category-item ${hasJunk ? '' : 'disabled'}`;
-    
-    // Toggle clicking on the item container checking the box
-    item.addEventListener('click', (e) => {
-        if (!hasJunk || (e.target as HTMLElement).tagName === 'INPUT') return;
-        const cb = item.querySelector('input') as HTMLInputElement;
-        cb.checked = !cb.checked;
-        cb.dispatchEvent(new Event('change'));
-    });
+    placeholder.classList.add('hidden');
+    details.classList.remove('hidden');
 
-    item.innerHTML = `
-      <div class="cat-checkbox">
-        <input type="checkbox" id="cat_${cat.id}" ${hasJunk ? 'checked' : ''} ${hasJunk ? '' : 'disabled'} />
-      </div>
-      <div class="cat-info">
-        <div class="cat-header">
-          <span class="cat-title">${cat.name}</span>
-          <span class="cat-stats">${formatBytes(cat.size)} (${cat.file_count} files)</span>
-        </div>
-        <p class="cat-desc">${cat.description}</p>
-      </div>
-    `;
+    inspectName.textContent = nodeData.name;
+    inspectPath.textContent = nodeData.path;
+    inspectSize.textContent = formatBytes(nodeData.size);
+    inspectType.textContent = nodeData.is_dir ? 'Directory' : 'File';
 
-    const checkbox = item.querySelector('input') as HTMLInputElement;
-    checkbox.addEventListener('change', (e) => {
-      const checked = (e.target as HTMLInputElement).checked;
-      cat.paths.forEach(p => {
-        if (checked) selectedPaths.add(p);
-        else selectedPaths.delete(p);
-      });
-      updateCleanButtonState();
-    });
-
-    categoryList.appendChild(item);
-  });
-  
-  updateCleanButtonState();
-}
-
-btnScan.addEventListener('click', async () => {
-  btnScan.disabled = true;
-  btnClean.classList.add('hidden');
-  sizeDisplay.classList.add('hidden');
-  categoryList.classList.add('hidden');
-  
-  statusIcon.textContent = '⏳';
-  statusIcon.classList.add('spinning');
-  statusMessage.textContent = 'Scanning system components...';
-  
-  try {
-    const result: ScanResult = await invoke("scan_system");
-    currentScanResult = result;
-    
-    statusIcon.classList.remove('spinning');
-    
-    if (result.total_size > 0) {
-      statusIcon.textContent = '⚠️';
-      statusMessage.textContent = 'Review found items and select what to clean:';
-      sizeDisplay.textContent = formatBytes(result.total_size);
-      sizeDisplay.classList.remove('hidden');
-      
-      renderCategories(result);
-      btnClean.classList.remove('hidden');
-      btnScan.textContent = 'Rescan System';
+    if (nodeData.is_dir) {
+        btnEmpty.classList.remove('hidden');
     } else {
-      statusIcon.textContent = '✅';
-      statusMessage.textContent = 'Your system is completely clean!';
-      btnScan.textContent = 'Scan Again';
+        btnEmpty.classList.add('hidden');
     }
-  } catch (error) {
-    statusIcon.classList.remove('spinning');
-    statusIcon.textContent = '❌';
-    statusMessage.textContent = `Error: ${error}`;
-  } finally {
-    btnScan.disabled = false;
-  }
+}
+
+async function fetchAndRenderChildren(path: string, container: HTMLElement) {
+    container.innerHTML = '<div class="loading">Scanning contents...</div>';
+    try {
+        const children: TreeNode[] = await invoke("get_folder_children", { path });
+        container.innerHTML = '';
+
+        if (children.length === 0) {
+            container.innerHTML = '<div class="tree-row"><div class="tree-name" style="color: grey; padding-left: 1.5rem">(Empty)</div></div>';
+            return;
+        }
+
+        children.forEach(child => {
+            const nodeEl = document.createElement('div');
+            nodeEl.className = 'tree-node';
+
+            const rowEl = document.createElement('div');
+            rowEl.className = 'tree-row';
+            
+            const expandIcon = child.is_dir && child.has_children ? '▶' : (child.is_dir ? '📁' : '📄');
+            
+            rowEl.innerHTML = `
+                <div class="tree-icon">${expandIcon}</div>
+                <div class="tree-name">${child.name}</div>
+                <div class="tree-size">${formatBytes(child.size)}</div>
+            `;
+
+            let childrenContainer: HTMLElement | null = null;
+            let expanded = false;
+
+            rowEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                
+                // Update Inspector
+                selectNode(child, rowEl);
+
+                // Handle Expansion if it's a directory
+                if (child.is_dir && child.has_children) {
+                    if (!childrenContainer) {
+                        childrenContainer = document.createElement('div');
+                        childrenContainer.className = 'tree-children';
+                        nodeEl.appendChild(childrenContainer);
+                        
+                        rowEl.querySelector('.tree-icon')!.textContent = '▼';
+                        expanded = true;
+                        fetchAndRenderChildren(child.path, childrenContainer);
+                    } else {
+                        expanded = !expanded;
+                        childrenContainer.style.display = expanded ? 'flex' : 'none';
+                        rowEl.querySelector('.tree-icon')!.textContent = expanded ? '▼' : '▶';
+                    }
+                }
+            });
+
+            nodeEl.appendChild(rowEl);
+            container.appendChild(nodeEl);
+        });
+    } catch (e) {
+        container.innerHTML = `<div class="loading">Error reading directory</div>`;
+    }
+}
+
+btnSelectFolder.addEventListener('click', async () => {
+    btnSelectFolder.disabled = true;
+    try {
+        const folder: string | null = await invoke("open_folder_picker");
+        if (folder) {
+            treeContainer.innerHTML = '';
+            
+            // Create root node representing selected folder
+            const rootNode: TreeNode = {
+                name: folder,
+                path: folder,
+                is_dir: true,
+                size: 0, // Ignored at root display typically
+                has_children: true,
+            };
+            
+            fetchAndRenderChildren(folder, treeContainer);
+        }
+    } finally {
+        btnSelectFolder.disabled = false;
+    }
 });
 
-btnClean.addEventListener('click', async () => {
-  if (selectedPaths.size === 0) return;
+btnDelete.addEventListener('click', async () => {
+    if (!currentSelectedPath) return;
 
-  btnScan.disabled = true;
-  btnClean.disabled = true;
-  categoryList.classList.add('hidden');
-  
-  statusIcon.textContent = '🧹';
-  statusIcon.classList.add('spinning');
-  statusMessage.textContent = 'Securely wiping selected locations...';
-  sizeDisplay.classList.add('hidden');
-  
-  try {
-    const pathsArray = Array.from(selectedPaths);
-    await invoke("clean_paths", { pathsToClean: pathsArray });
-    
-    statusIcon.classList.remove('spinning');
-    statusIcon.textContent = '✨';
-    statusMessage.textContent = 'Selected cleanup complete!';
-    
-    btnClean.classList.add('hidden');
-    selectedPaths.clear();
-  } catch (error) {
-    statusIcon.classList.remove('spinning');
-    statusIcon.textContent = '❌';
-    statusMessage.textContent = `Error during cleanup: ${error}`;
-  } finally {
-    btnScan.disabled = false;
-    btnClean.disabled = false;
-    btnScan.textContent = 'Verify / Rescan';
-  }
+    if (confirm(`Are you absolutely sure you want to permanently delete:\n\n${currentSelectedPath}`)) {
+        btnDelete.disabled = true;
+        btnDelete.textContent = 'Deleting...';
+        
+        try {
+            await invoke("clean_paths", { pathsToClean: [currentSelectedPath] });
+            
+            alert('Item successfully deleted. Please refresh the parent folder.');
+            
+            details.classList.add('hidden');
+            placeholder.classList.remove('hidden');
+            
+            if (currentlySelectedRow) {
+                currentlySelectedRow.parentElement?.remove();
+            }
+            currentSelectedPath = null;
+        } catch (e) {
+            alert(`Failed to delete: ${e}`);
+        } finally {
+            btnDelete.disabled = false;
+            btnDelete.textContent = 'Permanently Delete';
+        }
+    }
+});
+
+btnEmpty.addEventListener('click', async () => {
+    if (!currentSelectedPath) return;
+
+    if (confirm(`Are you absolutely sure you want to empty the contents of:\n\n${currentSelectedPath} ?\n\nThe folder itself will remain.`)) {
+        btnEmpty.disabled = true;
+        btnEmpty.textContent = 'Emptying...';
+        
+        try {
+            await invoke("empty_dir_contents", { pathStr: currentSelectedPath });
+            
+            alert('Folder contents successfully deleted. Please refresh the parent folder.');
+            
+            inspectSize.textContent = '0 B';
+        } catch (e) {
+            alert(`Failed to empty folder: ${e}`);
+        } finally {
+            btnEmpty.disabled = false;
+            btnEmpty.textContent = 'Empty Contents Only';
+        }
+    }
 });

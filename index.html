@@ -3,38 +3,69 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Disk Cleaner Pro</title>
+  <title>Disk Analyzer</title>
   <link rel="stylesheet" href="/src/styles.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="app-container">
-    <div class="glass-panel">
-      
-      <div class="header">
-        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
-        <h1>Disk Cleaner Pro</h1>
+  <div class="split-layout">
+    <!-- Left Pane: Tree View -->
+    <div class="pane tree-pane">
+      <div class="pane-header">
+        <h2>File System</h2>
+        <button id="btn-select-folder" class="btn small">Open Folder</button>
       </div>
-      
-      <div class="status-container">
-        <div id="status-icon" class="status-icon idle">🔍</div>
-        <p id="status-message" class="status-message">Ready to scan your entire system for junk.</p>
-        <p id="size-display" class="size-display hidden">0 B</p>
+      <div id="tree-container" class="tree-container">
+        <p class="placeholder-text">Select a folder to begin analyzing your storage.</p>
       </div>
+    </div>
 
-      <div id="category-list" class="category-list hidden">
-        <!-- Categories injected here by JS -->
+    <!-- Right Pane: Inspector -->
+    <div class="pane inspector-pane">
+      <div class="pane-header">
+        <h2>Inspector</h2>
       </div>
+      <div class="inspector-content">
+        <div id="inspector-placeholder" class="inspector-placeholder">
+          <div class="status-icon">🔎</div>
+          <p>Select a folder from the tree to view its details.</p>
+        </div>
+        
+        <div id="inspector-details" class="inspector-details hidden">
+          <div class="info-group">
+            <label>Name</label>
+            <h3 id="inspect-name">Folder Name</h3>
+          </div>
+          
+          <div class="info-group">
+            <label>Path</label>
+            <p id="inspect-path" class="path-text">C:\Path\To\Folder</p>
+          </div>
 
-      <div class="actions">
-        <button id="btn-scan" class="btn primary">Scan System</button>
-        <button id="btn-clean" class="btn hidden danger" disabled>Clean Selected Items</button>
+          <div class="info-stats">
+            <div class="stat-box">
+              <label>Total Size</label>
+              <div id="inspect-size" class="stat-val">0 B</div>
+            </div>
+            <div class="stat-box">
+              <label>Type</label>
+              <div id="inspect-type" class="stat-val">Directory</div>
+            </div>
+          </div>
+          
+          <div class="danger-zone">
+            <h3>Danger Zone</h3>
+            <p id="danger-desc">Select a permanent action for this item.</p>
+            <div class="danger-actions">
+              <button id="btn-empty" class="btn hidden danger-outline full">Empty Contents Only</button>
+              <button id="btn-delete" class="btn danger full">Permanently Delete</button>
+            </div>
+          </div>
+        </div>
       </div>
-
     </div>
   </div>
+
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
