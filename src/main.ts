@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 interface TreeNode {
   name: string;
@@ -10,6 +11,8 @@ interface TreeNode {
 
 const btnSelectFolder = document.getElementById('btn-select-folder') as HTMLButtonElement;
 const treeContainer = document.getElementById('tree-container') as HTMLDivElement;
+const loadingOverlay = document.getElementById('loading-overlay') as HTMLDivElement;
+const scanPathText = document.getElementById('scan-path-text') as HTMLSpanElement;
 
 const placeholder = document.getElementById('inspector-placeholder') as HTMLDivElement;
 const details = document.getElementById('inspector-details') as HTMLDivElement;
@@ -20,9 +23,15 @@ const inspectSize = document.getElementById('inspect-size') as HTMLDivElement;
 const inspectType = document.getElementById('inspect-type') as HTMLDivElement;
 const btnDelete = document.getElementById('btn-delete') as HTMLButtonElement;
 const btnEmpty = document.getElementById('btn-empty') as HTMLButtonElement;
+const aiDesc = document.getElementById('ai-desc') as HTMLParagraphElement;
+const btnAiAnalyze = document.getElementById('btn-ai-analyze') as HTMLButtonElement;
+const aiResultBox = document.getElementById('ai-result-box') as HTMLDivElement;
+const aiResultText = document.getElementById('ai-result-text') as HTMLParagraphElement;
 
 let currentSelectedPath: string | null = null;
 let currentlySelectedRow: HTMLElement | null = null;
+let geminiStreamUnlisten: UnlistenFn | null = null;
+let geminiDoneUnlisten: UnlistenFn | null = null;
 
 function formatBytes(bytes: number, decimals = 2) {
   if (!+bytes) return '0 B';
@@ -49,10 +58,17 @@ function selectNode(nodeData: TreeNode, rowEl: HTMLElement) {
     inspectSize.textContent = formatBytes(nodeData.size);
     inspectType.textContent = nodeData.is_dir ? 'Directory' : 'File';
 
+    aiResultBox.classList.add('hidden');
+    aiResultText.textContent = '';
+
     if (nodeData.is_dir) {
         btnEmpty.classList.remove('hidden');
+        aiDesc.textContent = "Ask Gemini to analyze this directory's safety in real-time.";
+        btnAiAnalyze.textContent = "🪄 Analyze Folder with Gemini";
     } else {
         btnEmpty.classList.add('hidden');
+        aiDesc.textContent = "Ask Gemini to analyze this file's safety in real-time.";
+        btnAiAnalyze.textContent = "🪄 Analyze File with Gemini";
     }
 }
 
@@ -123,17 +139,20 @@ btnSelectFolder.addEventListener('click', async () => {
         const folder: string | null = await invoke("open_folder_picker");
         if (folder) {
             treeContainer.innerHTML = '';
+            loadingOverlay.classList.remove('hidden');
+            scanPathText.textContent = folder;
             
-            // Create root node representing selected folder
-            const rootNode: TreeNode = {
-                name: folder,
-                path: folder,
-                is_dir: true,
-                size: 0, // Ignored at root display typically
-                has_children: true,
-            };
-            
-            fetchAndRenderChildren(folder, treeContainer);
+            try {
+                // Execute deep scan globally
+                await invoke("scan_directory", { rootPath: folder });
+                
+                // Fetch and render the actual children
+                fetchAndRenderChildren(folder, treeContainer);
+            } catch (e) {
+                alert(`Scan failed: ${e}`);
+            } finally {
+                loadingOverlay.classList.add('hidden');
+            }
         }
     } finally {
         btnSelectFolder.disabled = false;
@@ -178,14 +197,64 @@ btnEmpty.addEventListener('click', async () => {
         try {
             await invoke("empty_dir_contents", { pathStr: currentSelectedPath });
             
-            alert('Folder contents successfully deleted. Please refresh the parent folder.');
+            alert('Folder contents successfully deleted.');
             
             inspectSize.textContent = '0 B';
+            
+            // Destroy cached DOM children so next expansion fetches accurate backend data
+            if (currentlySelectedRow) {
+                const sizeEl = currentlySelectedRow.querySelector('.tree-size');
+                if (sizeEl) {
+                    sizeEl.textContent = '0 B';
+                }
+                const nodeEl = currentlySelectedRow.parentElement;
+                if (nodeEl) {
+                    const childrenContainer = nodeEl.querySelector('.tree-children');
+                    if (childrenContainer) {
+                        childrenContainer.remove();
+                    }
+                    const icon = currentlySelectedRow.querySelector('.tree-icon');
+                    if (icon && icon.textContent === '▼') {
+                        icon.textContent = '▶';
+                    }
+                }
+            }
+            
         } catch (e) {
             alert(`Failed to empty folder: ${e}`);
         } finally {
             btnEmpty.disabled = false;
             btnEmpty.textContent = 'Empty Contents Only';
         }
+    }
+});
+
+btnAiAnalyze.addEventListener('click', async () => {
+    if (!currentSelectedPath) return;
+
+    btnAiAnalyze.disabled = true;
+    btnAiAnalyze.textContent = 'Thinking...';
+    aiResultBox.classList.remove('hidden');
+    aiResultText.textContent = '';
+    
+    if (geminiStreamUnlisten) geminiStreamUnlisten();
+    if (geminiDoneUnlisten) geminiDoneUnlisten();
+
+    geminiStreamUnlisten = await listen<string>('gemini-stream', (event) => {
+        aiResultText.textContent += event.payload + '\n';
+        aiResultBox.scrollTop = aiResultBox.scrollHeight;
+    });
+
+    geminiDoneUnlisten = await listen<boolean>('gemini-done', () => {
+        btnAiAnalyze.disabled = false;
+        btnAiAnalyze.textContent = currentlySelectedRow?.querySelector('.tree-icon')?.textContent === '📄' ? '🪄 Analyze File with Gemini' : '🪄 Analyze Folder with Gemini';
+    });
+    
+    try {
+        await invoke("analyze_directory_ai", { path: currentSelectedPath });
+    } catch (e) {
+        aiResultText.textContent += `Error: ${e}`;
+        btnAiAnalyze.disabled = false;
+        btnAiAnalyze.textContent = currentlySelectedRow?.querySelector('.tree-icon')?.textContent === '📄' ? '🪄 Analyze File with Gemini' : '🪄 Analyze Folder with Gemini';
     }
 });

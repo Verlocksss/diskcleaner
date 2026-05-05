@@ -42,6 +42,7 @@ body, html {
   flex: 1;
   min-width: 300px;
   max-width: 50%;
+  position: relative;
 }
 
 .inspector-pane {
@@ -132,6 +133,32 @@ body, html {
   display: flex;
   flex-direction: column;
 }
+
+.loading-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  color: white;
+  text-align: center;
+}
+.loading-overlay.hidden {
+  display: none !important;
+}
+.spinner {
+  width: 50px; height: 50px;
+  border: 4px solid rgba(255,255,255,0.1);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Temp Loading Animation */
 .loading {
@@ -231,6 +258,38 @@ body, html {
   font-size: 1.5rem;
   font-weight: 600;
   color: var(--accent-color);
+}
+
+.ai-zone {
+  margin-top: 1rem;
+  padding: 1.5rem;
+  border: 1px solid var(--accent-color);
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 12px;
+}
+
+.ai-zone h3 {
+  margin: 0 0 0.5rem 0;
+  color: var(--accent-color);
+}
+
+.ai-zone p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: 0 0 1rem 0;
+}
+
+.ai-result-box {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  white-space: pre-wrap;
+  border: 1px dashed var(--panel-border);
+  user-select: text;
 }
 
 .danger-zone {

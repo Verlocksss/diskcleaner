@@ -18,6 +18,11 @@
       <div id="tree-container" class="tree-container">
         <p class="placeholder-text">Select a folder to begin analyzing your storage.</p>
       </div>
+      
+      <div id="loading-overlay" class="loading-overlay hidden">
+          <div class="spinner"></div>
+          <p>Deep Scanning...<br><span id="scan-path-text" class="text-sm text-muted"></span></p>
+      </div>
     </div>
 
     <!-- Right Pane: Inspector -->
@@ -50,6 +55,15 @@
             <div class="stat-box">
               <label>Type</label>
               <div id="inspect-type" class="stat-val">Directory</div>
+            </div>
+          </div>
+          
+          <div class="ai-zone">
+            <h3>AI Knowledge</h3>
+            <p id="ai-desc">Ask Gemini to analyze this directory's safety in real-time.</p>
+            <button id="btn-ai-analyze" class="btn primary full">🪄 Analyze Folder with Gemini</button>
+            <div id="ai-result-box" class="ai-result-box hidden">
+              <p id="ai-result-text"></p>
             </div>
           </div>
           
